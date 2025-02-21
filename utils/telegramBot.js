@@ -129,7 +129,7 @@ const commandHandlers = {
   deposit: async (chatId) => {
     await bot.sendMessage(
       chatId,
-      "1000070431371 ወደዚ ንግድባንክ ለማስገባት የፈለጉትን ብር ካስገቡ በሃላ ወደዚ ስልክ **0956030628** ይላኩ/ይደውሉ",
+      "**1000070431371** ለማስገባት የፈለጉትን ወደዚ ንግድባንክ  ብር ካስገቡ በሃላ ደረሰኝ ይላኩ/ይደውሉ ስልክ **0956030628** ",
       { reply_markup: { remove_keyboard: true } }
     );
   },
