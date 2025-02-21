@@ -28,8 +28,9 @@ const commandHandlers = {
       reply_markup: {
         inline_keyboard: [
           [{ text: "Play 🎮", callback_data: "play" }, { text: "Register 👤", callback_data: "register" }],
+          [{ text: "Deposit 💰", callback_data: "deposit" }],
           [{ text: "Balance 💰", callback_data: "balance" },{ text: "Transfer Balance 💳", callback_data: "transfer" },],
-          [{ text: "Instructions ℹ️", web_app: { url: `${baseUrl}/how-to-play` } }, { text: "History 📜", callback_data: "history" }],
+          [{ text: "Instructions", web_app: { url: `${baseUrl}/how-to-play` } }, { text: "History 📜", callback_data: "history" }],
         ]
       }
     });
@@ -124,8 +125,14 @@ const commandHandlers = {
     }, chatId, "Error checking balance. Please try again.");
   },
 
- 
-
+  // Add new deposit handler
+  deposit: async (chatId) => {
+    await bot.sendMessage(
+      chatId,
+      "1000070431371 ወደዚ ንግድባንክ ለማስገባት የፈለጉትን ብር ካስገቡ በሃላ ወደዚ ስልክ **0956030628** ይላኩ/ይደውሉ",
+      { reply_markup: { remove_keyboard: true } }
+    );
+  },
 
   transfer: async (chatId) => {
     await transactionHandlers.transfer(chatId, bot);
@@ -142,7 +149,8 @@ const commandMappings = {
   '/start': 'sendMainMenu',
   '/play': 'play',
   '/register': 'register',
-  '/balance': 'checkBalance', 
+  '/deposit': 'deposit',
+  '/balance': 'checkBalance',
   '/transfer': 'transfer',
   '/history': 'history'
 };
@@ -155,7 +163,8 @@ Object.entries(commandMappings).forEach(([command, handler]) => {
 const callbackActions = {
   play: commandHandlers.play,
   register: commandHandlers.register,
-  balance: commandHandlers.checkBalance, 
+  deposit: commandHandlers.deposit,
+  balance: commandHandlers.checkBalance,
   transfer: commandHandlers.transfer,
   history: commandHandlers.history
 };
