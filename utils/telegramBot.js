@@ -61,9 +61,9 @@ const commandHandlers = {
                         { text: "🎮 Play 50", web_app: { url: `${baseUrl}/board/50/${chatId}` } }, 
                         { text: "🎮 Play 100", web_app: { url: `${baseUrl}/board/100/${chatId}` } }
                     ],
-                    [
-                        { text: "🎮 Play Demo", web_app: { url: `${baseUrl}/board/0/${chatId}` } }
-                    ]
+                    // [
+                    //     { text: "🎮 Play Demo", web_app: { url: `${baseUrl}/board/0/${chatId}` } }
+                    // ]
                 ]
             }
         });
