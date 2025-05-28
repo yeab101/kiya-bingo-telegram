@@ -17,9 +17,7 @@ const transactionSchema = new mongoose.Schema({
         required: true
     },
     bankType: {
-        type: String,
-        enum: ['cbe', 'cbe_birr_wallet'],
-        required: function() { return this.type === 'withdrawal'; }
+        type: String, 
     },
     bankNumber: { type: String }, // For withdrawals
     errorMessage: { 
