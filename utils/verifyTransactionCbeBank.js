@@ -1,24 +1,27 @@
 const verifyBankTransaction = require("../cbebank");
 const Finance = require("../models/financeModel");
 const User = require("../models/userModel");
-const adminReceiverAccount = "1864"
+const adminReceiverAccount = "6094"
 const adminReceiverAccount2 = "6094"
-
 const ADMIN_CHAT_ID = "1982046925";
 
-const verifyTransactionCbeBank = async (chatId, bot) => {
-    await bot.sendMessage(chatId, "🔍 Please enter the CBE Bank transaction reference number (e.g., FT25140X24J7):");
-
+const verifyTransactionCbeBank = async (chatId, bot, providedTxId) => {
+    if (!providedTxId) {
+        await bot.sendMessage(chatId, "🔍 Please enter the CBE Bank transaction reference number (e.g., FT25140X24J7):");
+    } 
     const messageHandler = async (msg) => {
-        const txId = msg.text.trim();
+        const txId = providedTxId || msg.text.trim();
         let processingMessage = '';
 
         // Remove the message listener to prevent multiple responses
-        bot.removeListener('message', messageHandler);
+        if (!providedTxId) {
+            bot.removeListener('message', messageHandler);
+        }
 
         try {
             const result = await verifyBankTransaction(txId);
 
+            await bot.sendMessage(chatId, `${providedTxId}`);
             // Validate receiver account
             const receiverAccountStr = result.receiverAccount.toString();
             if (receiverAccountStr !== adminReceiverAccount && receiverAccountStr !== adminReceiverAccount2) {
@@ -43,6 +46,10 @@ const verifyTransactionCbeBank = async (chatId, bot) => {
                 type: 'deposit'
             });
 
+            if (!pendingTransaction) { 
+                await bot.sendMessage(chatId, "❌ No pending transaction found.");
+                return;
+            }
             // If pending transaction exists, process it
             if (pendingTransaction) {
                 // Validate if amounts match exactly
@@ -113,8 +120,13 @@ const verifyTransactionCbeBank = async (chatId, bot) => {
         }
     };
 
-    // Add message listener
-    bot.once('message', messageHandler);
+    // Add message listener only if no transaction ID was provided
+    if (!providedTxId) {
+        bot.once('message', messageHandler);
+    } else {
+        // If transaction ID was provided, process it immediately
+        await messageHandler({ text: providedTxId });
+    }
 };
 
 module.exports = verifyTransactionCbeBank;

@@ -6,6 +6,7 @@ const transactionHandlers = require("./transactionHandler");
 const historyHandlers = require("./historyHandler");
 const verifyTransaction = require("./verifyTransaction");
 const verifyTransactionCbeBank = require("./verifyTransactionCbeBank");
+const Tesseract = require('tesseract.js');
 const bot = new TelegramBot(process.env.TELEGRAMBOTTOKEN, { polling: true });
 const baseUrl = "https://kiya-bingo-frontend.vercel.app"
 
@@ -19,6 +20,9 @@ const errorHandler = async (operation, chatId, errorMsg = "An error occurred") =
     return null;
   }
 };
+
+// Add temporary storage for file IDs
+const pendingImages = new Map();
 
 // Command handlers object to group related functions
 const commandHandlers = {
@@ -164,88 +168,15 @@ const commandHandlers = {
         return bot.sendMessage(chatId, "⚠️ Please register first /register to make a deposit.");
       }
 
-      // Ask for Telebirr phone number
-      await bot.sendMessage(chatId, "Please send the payment to our 0912487230 or 0995056029 Telebirr or CBE Bank 1000113221864 or 1000278386094 account and after payment send the transaction id to TxChecker.");
-      await bot.sendMessage(chatId, "📱 Please enter your Telebirr phone number or Cbe Account you will use to deposit");
-      
-      const phoneHandler = async (msg) => {
-        const phoneNumber = msg.text.trim();
-        // const phoneRegex = /^09\d{8}$/;
-
-        // if (!phoneRegex.test(phoneNumber)) {
-        //   await bot.sendMessage(chatId, "❌ Invalid phone number format. Please enter a valid Telebirr number (09xxxxxxxx).");
-        //   return;
-        // }
-
-        // Remove the phone number handler
-        bot.removeListener('message', phoneHandler);
-
-        // Ask for amount
-        await bot.sendMessage(chatId, "💰 Please enter the amount you want to deposit (minimum 10 ETB):");
-        
-        const amountHandler = async (msg) => {
-          const amount = parseFloat(msg.text.trim());
-          
-          // Remove the amount handler
-          bot.removeListener('message', amountHandler);
-
-          if (isNaN(amount) || amount < 10) {
-            await bot.sendMessage(chatId, "❌ Invalid amount. Please enter a number greater than or equal to 10 ETB.");
-            return;
-          }
-
-          try {
-            // Generate random 10-digit transaction ID
-            const transactionId = Math.floor(1000000000 + Math.random() * 9000000000).toString();
-
-            // Create deposit record
-            const deposit = new Finance({
-              transactionId,
-              refrenceIdExternal: transactionId,
-              chatId: chatId.toString(),
-              amount,
-              status: 'PENDING_APPROVAL',
-              type: 'deposit',
-              paymentMethod: 'Telebirr',
-              phoneNumber
-            });
-
-            await deposit.save();
-
-            // Send confirmation message with verification buttons
-            const message = `
-✅ *Deposit Request Submitted*
-━━━━━━━━━━━━━━━━━━━━━━
-📱 Phone: ${phoneNumber}
-💰 Amount: ${amount} ETB
-🔢 Transaction ID: ${transactionId}
-⏳ Status: Pending Approval
-━━━━━━━━━━━━━━━━━━━━━━
-
-Please verify your deposit using one of the buttons below:
-`;
-
-            await bot.sendMessage(chatId, message, { 
-              parse_mode: 'Markdown',
-              reply_markup: {
-                inline_keyboard: [
-                  [
-                    { text: "Check Telebirr Deposit 📱", callback_data: "txChecker" },
-                    { text: "Check CBE Deposit 🏦", callback_data: "txCheckerCbeBank" }
-                  ]
-                ]
-              }
-            });
-          } catch (error) {
-            console.error('Error creating deposit:', error);
-            await bot.sendMessage(chatId, "❌ An error occurred while processing your deposit. Please try again.");
-          }
-        };
-
-        bot.once('message', amountHandler);
-      };
-
-      bot.once('message', phoneHandler);
+      // Show channel selection buttons
+      await bot.sendMessage(chatId, "💳 Please select your preferred payment method:", {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📱 Telebirr", callback_data: "deposit_telebirr" }],
+            [{ text: "🏦 CBE Bank", callback_data: "deposit_cbe" }]
+          ]
+        }
+      });
     } catch (error) {
       console.error('Error in deposit handler:', error);
       await bot.sendMessage(chatId, "❌ An error occurred. Please try again later.");
@@ -365,6 +296,10 @@ Your withdrawal request has been submitted and is pending approval.`;
     }
   },
 
+  image: async (chatId) => {
+    await bot.sendMessage(chatId, "📸 Please send or forward an image containing text to extract.");
+  },
+
 };
 
 // Command mappings
@@ -375,7 +310,8 @@ const commandMappings = {
   '/balance': 'checkBalance',
   '/transfer': 'transfer',
   '/history': 'history',
-  '/txcheckercbe': 'txCheckerCbeBank'
+  '/txcheckercbe': 'txCheckerCbeBank',
+  '/image': 'image'
 };
 
 // Register text commands
@@ -394,21 +330,370 @@ const callbackActions = {
   txCheckerCbeBank: commandHandlers.txCheckerCbeBank,
   deposit: commandHandlers.deposit,
   withdrawal: commandHandlers.withdrawal,
+  deposit_telebirr: async (chatId) => {
+    try {
+      await bot.sendMessage(chatId, "📱Please enter your Telebirr phone number you will use to deposit");
+      
+      const phoneHandler = async (msg) => {
+        const phoneNumber = msg.text.trim(); 
+
+        // Remove the phone number handler
+        bot.removeListener('message', phoneHandler);
+
+        // Ask for amount
+        await bot.sendMessage(chatId, "💰 Please enter the amount you want to deposit (minimum 10 ETB):");
+        
+        const amountHandler = async (msg) => {
+          const amount = parseFloat(msg.text.trim());
+          
+          // Remove the amount handler
+          bot.removeListener('message', amountHandler);
+
+          if (isNaN(amount) || amount < 10) {
+            await bot.sendMessage(chatId, "❌ Invalid amount. Please enter a number greater than or equal to 10 ETB.");
+            return;
+          }
+
+          try {
+            // Generate random 10-digit transaction ID
+            const transactionId = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+
+            // Create deposit record
+            const deposit = new Finance({
+              transactionId,
+              refrenceIdExternal: transactionId,
+              chatId: chatId.toString(),
+              amount,
+              status: 'PENDING_APPROVAL',
+              type: 'deposit',
+              paymentMethod: 'Telebirr',
+              phoneNumber
+            });
+
+            await deposit.save();
+
+            // Send confirmation message with verification buttons
+            const message = `
+✅ Deposit to this account 0995056029 and send screenshot or verify using one of the buttons below
+━━━━━━━━━━━━━━━━━━━━━━
+📱 Phone: ${phoneNumber}
+💰 Amount: ${amount} ETB
+🔢 Transaction ID: ${transactionId}
+⏳ Status: Pending Approval
+━━━━━━━━━━━━━━━━━━━━━━
+`;
+
+            await bot.sendMessage(chatId, message, { 
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    { text: "Check Telebirr Deposit 📱", callback_data: "txChecker" },
+                    { text: "Check CBE Deposit 🏦", callback_data: "txCheckerCbeBank" }
+                  ]
+                ]
+              }
+            });
+          } catch (error) {
+            console.error('Error creating deposit:', error);
+            await bot.sendMessage(chatId, "❌ An error occurred while processing your deposit. Please try again.");
+          }
+        };
+
+        bot.once('message', amountHandler);
+      };
+
+      bot.once('message', phoneHandler);
+    } catch (error) {
+      console.error('Error in deposit handler:', error);
+      await bot.sendMessage(chatId, "❌ An error occurred. Please try again later.");
+    }
+  },
+  deposit_cbe: async (chatId) => {
+    try {
+      await bot.sendMessage(chatId, "🏦Please enter your CBE Bank account number you will use to deposit");
+      
+      const accountHandler = async (msg) => {
+        const accountNumber = msg.text.trim(); 
+
+        // Remove the account handler
+        bot.removeListener('message', accountHandler);
+
+        // Ask for amount
+        await bot.sendMessage(chatId, "💰 Please enter the amount you want to deposit (minimum 10 ETB):");
+        
+        const amountHandler = async (msg) => {
+          const amount = parseFloat(msg.text.trim());
+          
+          // Remove the amount handler
+          bot.removeListener('message', amountHandler);
+
+          if (isNaN(amount) || amount < 10) {
+            await bot.sendMessage(chatId, "❌ Invalid amount. Please enter a number greater than or equal to 10 ETB.");
+            return;
+          }
+
+          try {
+            // Generate random 10-digit transaction ID
+            const transactionId = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+
+            // Create deposit record
+            const deposit = new Finance({
+              transactionId,
+              refrenceIdExternal: transactionId,
+              chatId: chatId.toString(),
+              amount,
+              status: 'PENDING_APPROVAL',
+              type: 'deposit',
+              paymentMethod: 'CBE Bank',
+              phoneNumber: accountNumber
+            });
+
+            await deposit.save();
+
+            // Send confirmation message with verification buttons
+            const message = `
+✅ Deposit to this 1000278386094 Account and send screenshot or txCheck
+━━━━━━━━━━━━━━━━━━━━━━
+🏦 Account: ${accountNumber}
+💰 Amount: ${amount} ETB
+🔢 Transaction ID: ${transactionId}
+⏳ Status: Pending Approval
+━━━━━━━━━━━━━━━━━━━━━━
+
+Please verify your deposit using one of the buttons below:
+`;
+
+            await bot.sendMessage(chatId, message, { 
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    { text: "Check Telebirr Deposit 📱", callback_data: "txChecker" },
+                    { text: "Check CBE Deposit 🏦", callback_data: "txCheckerCbeBank" }
+                  ]
+                ]
+              }
+            });
+          } catch (error) {
+            console.error('Error creating deposit:', error);
+            await bot.sendMessage(chatId, "❌ An error occurred while processing your deposit. Please try again.");
+          }
+        };
+
+        bot.once('message', amountHandler);
+      };
+
+      bot.once('message', accountHandler);
+    } catch (error) {
+      console.error('Error in deposit handler:', error);
+      await bot.sendMessage(chatId, "❌ An error occurred. Please try again later.");
+    }
+  },
   withdraw_telebirr: (chatId) => commandHandlers.handleWithdrawalMethod(chatId, "Telebirr"),
-  withdraw_cbe: (chatId) => commandHandlers.handleWithdrawalMethod(chatId, "CBE Bank")
+  withdraw_cbe: (chatId) => commandHandlers.handleWithdrawalMethod(chatId, "CBE Bank"),
+  process_telebirr: async (chatId, imageId) => {
+    const imageData = pendingImages.get(imageId);
+    if (!imageData) {
+      await bot.sendMessage(chatId, "❌ Image processing timeout. Please send the image again.");
+      return;
+    }
+    await handleImage(chatId, imageData.fileId);
+    pendingImages.delete(imageId); // Clean up after processing
+  },
+  process_cbe: async (chatId, imageId) => {
+    const imageData = pendingImages.get(imageId);
+    if (!imageData) {
+      await bot.sendMessage(chatId, "❌ Image processing timeout. Please send the image again.");
+      return;
+    }
+    await handleImageCbe(chatId, imageData.fileId);
+    pendingImages.delete(imageId); // Clean up after processing
+  }
 };
 
-// Handle callback queries
+// Handle photo messages
+bot.on('photo', async (msg) => {
+  const chatId = msg.chat.id;
+  const photo = msg.photo[msg.photo.length - 1]; // Get the highest quality photo
+  
+  // Generate a unique ID for this image
+  const imageId = Date.now().toString();
+  
+  // Store the file ID
+  pendingImages.set(imageId, {
+    fileId: photo.file_id,
+    timestamp: Date.now()
+  });
+
+  // Clean up old entries (older than 5 minutes)
+  for (const [id, data] of pendingImages.entries()) {
+    if (Date.now() - data.timestamp > 5 * 60 * 1000) {
+      pendingImages.delete(id);
+    }
+  }
+  
+  // Send selection buttons
+  await bot.sendMessage(chatId, "📸 Please select the transaction type:", {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { 
+            text: "📱 Telebirr", 
+            callback_data: `tel:${imageId}` 
+          },
+          { 
+            text: "🏦 CBE to CBE", 
+            callback_data: `cbe:${imageId}` 
+          }
+        ]
+      ]
+    }
+  });
+});
+
+// Update callback query handler
 bot.on('callback_query', async (callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
   const action = callbackQuery.data;
 
-  const handler = callbackActions[action];
-  if (handler) {
-    await handler(chatId);
-  } else {
-    console.log(`Unhandled callback data: ${action}`);
+  try {
+    if (action.startsWith('tel:')) {
+      const imageId = action.split(':')[1];
+      await callbackActions.process_telebirr(chatId, imageId);
+    } else if (action.startsWith('cbe:')) {
+      const imageId = action.split(':')[1];
+      await callbackActions.process_cbe(chatId, imageId);
+    } else {
+      const handler = callbackActions[action];
+      if (handler) {
+        await handler(chatId);
+      } else {
+        console.log(`Unhandled callback data: ${action}`);
+      }
+    }
+  } catch (error) {
+    console.error('Error handling callback:', error);
+    await bot.sendMessage(chatId, "❌ An error occurred. Please try again.");
   }
 });
+
+// Add new image handler
+const handleImage = async (chatId, fileId) => {
+  try {
+    // Send processing message
+    const processingMsg = await bot.sendMessage(chatId, "🔄 Processing image... Please wait.");
+    
+    // Get file path
+    const file = await bot.getFile(fileId);
+    const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAMBOTTOKEN}/${file.file_path}`;
+    
+    // Perform OCR
+    const result = await Tesseract.recognize(
+      fileUrl,
+      'eng',
+      { logger: m => console.log(m) }
+    );
+    
+    // Delete processing message
+    await bot.deleteMessage(chatId, processingMsg.message_id);
+    
+    // Process and clean the text
+    const rawText = result.data.text;
+    if (!rawText.trim()) {
+      await bot.sendMessage(chatId, "❌ No text could be extracted from the image.");
+      return;
+    }
+
+    // Clean the text
+    const cleanedText = rawText
+      .replace(/[^\w\s\d\-:./@]/g, '') // Remove special characters except essential ones
+      .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+      .trim();
+
+    // Try different patterns to find transaction number
+    const patterns = [
+      /Transaction Number\s*([A-Z0-9]+)/i,
+      /Transaction\s*#\s*([A-Z0-9]+)/i,
+      /Transaction ID\s*([A-Z0-9]+)/i,
+      /Transaction\s*([A-Z0-9]{8,})/i, // Fallback for any 8+ character alphanumeric after "Transaction"
+      /([A-Z0-9]{8,})/ // Last resort: any 8+ character alphanumeric
+    ];
+
+    let transactionNumber = null;
+    for (const pattern of patterns) {
+      const match = cleanedText.match(pattern);
+      if (match && match[1]) {
+        transactionNumber = match[1];
+        break;
+      }
+    }
+
+    if (transactionNumber) {
+      const fullUrl = `https://transactioninfo.ethiotelecom.et/receipt/${transactionNumber}`;
+      // Instead of just sending the URL, use the transaction checker
+      // bot.sendMessage(chatId, `full url: ${fullUrl}`);
+      await verifyTransaction(fullUrl, chatId, bot);
+    } else {
+      await bot.sendMessage(chatId, "❌ Could not find a transaction number in the image. Please try again with a clearer image.");
+    }
+
+  } catch (error) {
+    console.error('Error processing image:', error);
+    await bot.sendMessage(chatId, "❌ An error occurred while processing the image. Please try again.");
+  }
+};
+
+// Add new image handler for CBE
+const handleImageCbe = async (chatId, fileId) => {
+  try {
+    // Send processing message
+    const processingMsg = await bot.sendMessage(chatId, "🔄 Processing CBE image... Please wait.");
+    
+    // Get file path
+    const file = await bot.getFile(fileId);
+    const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAMBOTTOKEN}/${file.file_path}`;
+    
+    // Perform OCR
+    const result = await Tesseract.recognize(
+      fileUrl,
+      'eng',
+      { logger: m => console.log(m) }
+    );
+    
+    // Delete processing message
+    await bot.deleteMessage(chatId, processingMsg.message_id);
+    
+    // Process and clean the text
+    const rawText = result.data.text;
+    if (!rawText.trim()) {
+      await bot.sendMessage(chatId, "❌ No text could be extracted from the CBE image.");
+      return;
+    }
+
+    // Clean the text
+    const cleanedText = rawText
+      .replace(/[^\w\s\d\-:./@]/g, '') // Remove special characters except essential ones
+      .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+      .trim();
+
+    // Extract transaction ID using regex
+    const transactionPattern = /FT[A-Z0-9]{10}/;
+    const match = cleanedText.match(transactionPattern);
+
+    if (match) {
+      const transactionId = match[0];
+      const fullUrl = `https://apps.cbe.com.et:100/?id=${transactionId}78386094`;
+      // await bot.sendMessage(chatId, `${fullUrl}`);
+      await verifyTransactionCbeBank(chatId, bot, `${fullUrl}`);
+    } else {
+      await bot.sendMessage(chatId, "❌ Could not find a transaction ID in the format 'FT' followed by 10 alphanumeric characters. Please try again with a clearer image.");
+    }
+
+  } catch (error) {
+    console.error('Error processing CBE image:', error);
+    await bot.sendMessage(chatId, "❌ An error occurred while processing the CBE image. Please try again.");
+  }
+};
 
 module.exports = bot; 

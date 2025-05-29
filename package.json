@@ -19,7 +19,8 @@
     "mongoose": "^8.3.1",
     "node-telegram-bot-api": "^0.66.0",
     "pdf-text-reader": "^5.1.0",
-    "request": "^2.88.2"
+    "request": "^2.88.2",
+    "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"

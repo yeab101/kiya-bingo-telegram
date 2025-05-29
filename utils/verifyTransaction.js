@@ -1,8 +1,7 @@
 const { downloadHtml } = require("../telebirrChecker");
 const Finance = require("../models/financeModel");
 const User = require("../models/userModel");
-const receiverAccount = "7230";
-const receiverAccount2 = "6029";
+const receiverAccount = "6029"; 
 
 const ADMIN_CHAT_ID = "1982046925";
 
@@ -19,11 +18,10 @@ const verifyTransaction = async (url, chatId, bot) => {
     
     // Process the transaction using telebirrChecker
     const result = await downloadHtml(url, 'temp_transaction.html');
-
-    // Validate receiver account last 4 digits
-    const lastFourDigits = result.receiverAccount.slice(-4);
-    if (lastFourDigits !== receiverAccount && lastFourDigits !== receiverAccount2) {
-      await bot.deleteMessage(chatId, processingMsg.message_id);
+    
+    // Validate receiver account last 4 digits 
+    if (result.receiverAccount.slice(-4) != receiverAccount) {
+      await bot.deleteMessage(chatId, processingMsg.message_id);  
       await bot.sendMessage(chatId, "❌ Error: receiver account does not match our accounts. Please check and try again.");
       return;
     }
