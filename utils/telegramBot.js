@@ -35,7 +35,7 @@ const commandHandlers = {
         inline_keyboard: [
           [{ text: "Play 🎮", callback_data: "play" }, { text: "Register 👤", callback_data: "register" }],
           [{ text: "Deposit 💰", callback_data: "deposit" }, { text: "Withdraw 💸", callback_data: "withdrawal" }],
-          [{ text: "Check Telebirr Deposit", callback_data: "txChecker" }, { text: "Check CBE Deposit", callback_data: "txCheckerCbeBank" }],
+          // [{ text: "Check Telebirr Deposit", callback_data: "txChecker" }, { text: "Check CBE Deposit", callback_data: "txCheckerCbeBank" }],
           [{ text: "Balance 💰", callback_data: "balance" },{ text: "Transfer Balance 💳", callback_data: "transfer" },],
           [{ text: "How to play 🎮", web_app: { url: `${baseUrl}/how-to-play` } }, { text: "History 📜", callback_data: "history" }],
         ]
@@ -374,12 +374,7 @@ const callbackActions = {
 
             // Send confirmation message with verification buttons
             const message = `
-✅ Deposit to this account 0995056029 and send screenshot or verify using one of the buttons below
-━━━━━━━━━━━━━━━━━━━━━━
-📱 Phone: ${phoneNumber}
-💰 Amount: ${amount} ETB
-🔢 Transaction ID: ${transactionId}
-⏳ Status: Pending Approval
+✅ Deposit ${amount} ETB to 0995056029 telebirr and send screenshot  
 ━━━━━━━━━━━━━━━━━━━━━━
 `;
 
@@ -388,8 +383,7 @@ const callbackActions = {
               reply_markup: {
                 inline_keyboard: [
                   [
-                    { text: "Check Telebirr Deposit 📱", callback_data: "txChecker" },
-                    { text: "Check CBE Deposit 🏦", callback_data: "txCheckerCbeBank" }
+                    { text: "Check Telebirr Deposit 📱", callback_data: "txChecker" }, 
                   ]
                 ]
               }
@@ -453,23 +447,18 @@ const callbackActions = {
 
             // Send confirmation message with verification buttons
             const message = `
-✅ Deposit to this 1000278386094 Account and send screenshot or txCheck
+✅ Deposit  ${amount} ETB to this CBE Bank 1000278386094 Account and send screenshot 
 ━━━━━━━━━━━━━━━━━━━━━━
-🏦 Account: ${accountNumber}
-💰 Amount: ${amount} ETB
-🔢 Transaction ID: ${transactionId}
-⏳ Status: Pending Approval
-━━━━━━━━━━━━━━━━━━━━━━
+⏳ Warning Dont send from other banks only CBE Bank 
 
-Please verify your deposit using one of the buttons below:
+Please Send Screenshot to verify your deposit using one of the buttons below:
 `;
 
             await bot.sendMessage(chatId, message, { 
               parse_mode: 'Markdown',
               reply_markup: {
                 inline_keyboard: [
-                  [
-                    { text: "Check Telebirr Deposit 📱", callback_data: "txChecker" },
+                  [ 
                     { text: "Check CBE Deposit 🏦", callback_data: "txCheckerCbeBank" }
                   ]
                 ]
@@ -631,9 +620,58 @@ const handleImage = async (chatId, fileId) => {
 
     if (transactionNumber) {
       const fullUrl = `https://transactioninfo.ethiotelecom.et/receipt/${transactionNumber}`;
-      // Instead of just sending the URL, use the transaction checker
-      // bot.sendMessage(chatId, `full url: ${fullUrl}`);
-      await verifyTransaction(fullUrl, chatId, bot);
+      let result = await verifyTransaction(fullUrl, chatId, bot);
+      if (!result.success) {
+        // If hard error, stop and do not retry
+        const hardErrors = ['already_processed', 'invalid_url', 'processing_error', 'exception'];
+        if (hardErrors.includes(result.reason)) {
+          // Do not retry, just return
+          return;
+        }
+        // Multi-variant correction logic
+        const charMap = {
+          'O': ['0', 'O'],
+          'S': ['5', 'S'],
+          'I': ['1', 'I'],
+          'B': ['8', 'B'],
+          'Z': ['2', 'Z'],
+          'T': ['1', '7', 'T']
+        };
+        function generateVariants(str, charMap) {
+          let results = [''];
+          for (const char of str) {
+            const upperChar = char.toUpperCase();
+            const replacements = charMap[upperChar] || [char];
+            let newResults = [];
+            for (const prefix of results) {
+              for (const rep of replacements) {
+                newResults.push(prefix + rep);
+              }
+            }
+            results = newResults;
+          }
+          return results;
+        }
+        const variants = generateVariants(transactionNumber, charMap);
+        let found = false;
+        for (const variant of variants) {
+          if (variant === transactionNumber) continue; // already tried original
+          const retryUrl = `https://transactioninfo.ethiotelecom.et/receipt/${variant}`;
+          let retryResult = await verifyTransaction(retryUrl, chatId, bot);
+          if (retryResult.success) {
+            found = true;
+            break;
+          }
+          // If hard error, stop and do not try further variants
+          if (hardErrors.includes(retryResult.reason)) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          await bot.sendMessage(chatId, "❌ Could not verify the transaction number, even after retrying with all common OCR corrections. Please try again with a clearer image.");
+        }
+      }
     } else {
       await bot.sendMessage(chatId, "❌ Could not find a transaction number in the image. Please try again with a clearer image.");
     }

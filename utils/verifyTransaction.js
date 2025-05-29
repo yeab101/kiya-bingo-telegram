@@ -5,11 +5,11 @@ const receiverAccount = "6029";
 
 const ADMIN_CHAT_ID = "1982046925";
 
-const verifyTransaction = async (url, chatId, bot) => {
+const verifyTransaction = async (url, chatId, bot, suppressErrors = false) => {
   // Validate URL format
   if (!url.startsWith('https://transactioninfo.ethiotelecom.et/receipt/')) {
-    await bot.sendMessage(chatId, "❌ Invalid URL format. Please provide a valid transaction URL.");
-    return;
+    if (!suppressErrors) await bot.sendMessage(chatId, "❌ Invalid URL format. Please provide a valid transaction URL.");
+    return { success: false, reason: 'invalid_url' };
   }
 
   try {
@@ -22,8 +22,10 @@ const verifyTransaction = async (url, chatId, bot) => {
     // Validate receiver account last 4 digits 
     if (result.receiverAccount.slice(-4) != receiverAccount) {
       await bot.deleteMessage(chatId, processingMsg.message_id);  
-      await bot.sendMessage(chatId, "❌ Error: receiver account does not match our accounts. Please check and try again.");
-      return;
+      if (!suppressErrors) { 
+        await bot.sendMessage(chatId, "Error: receiver account does not match our accounts. Trying again...");
+      }
+      return { success: false, reason: 'receiver_mismatch' };
     }
 
     // Check if transaction reference already exists
@@ -33,8 +35,8 @@ const verifyTransaction = async (url, chatId, bot) => {
 
     if (existingTransaction) {
       await bot.deleteMessage(chatId, processingMsg.message_id);
-      await bot.sendMessage(chatId, "❌ This transaction has already been processed. Please check another transaction.");
-      return;
+      if (!suppressErrors) await bot.sendMessage(chatId, "❌ This transaction has already been processed. Please check another transaction.");
+      return { success: false, reason: 'already_processed' };
     }
     
     // Check for pending transaction with matching amount
@@ -52,8 +54,8 @@ const verifyTransaction = async (url, chatId, bot) => {
       // Validate if amounts match exactly
       if (pendingTransaction.amount !== result.transferredAmount) {
         await bot.deleteMessage(chatId, processingMsg.message_id);
-        await bot.sendMessage(chatId, `❌ Amount mismatch!`);
-        return;
+        if (!suppressErrors) await bot.sendMessage(chatId, `❌ Amount mismatch!`);
+        return { success: false, reason: 'amount_mismatch' };
       }
 
       try {
@@ -88,6 +90,9 @@ const verifyTransaction = async (url, chatId, bot) => {
       } catch (error) {
         console.error('Error processing pending transaction:', error);
         processingMessage = '❌ Error processing your deposit. Please contact support.';
+        await bot.deleteMessage(chatId, processingMsg.message_id);
+        if (!suppressErrors) await bot.sendMessage(chatId, processingMessage);
+        return { success: false, reason: 'processing_error' };
       }
     }
 
@@ -109,10 +114,11 @@ ${pendingTransaction ? processingMessage : '❌ You do not have any pending depo
     // Delete processing message and send results
     await bot.deleteMessage(chatId, processingMsg.message_id);
     await bot.sendMessage(chatId, responseMessage, { parse_mode: 'Markdown' });
-    
+    return { success: true };
   } catch (error) {
     console.error('Error processing transaction:', error);
-    await bot.sendMessage(chatId, "❌ Error processing transaction. Please check the URL and try again.");
+    if (!suppressErrors) await bot.sendMessage(chatId, "❌ Error processing transaction. Please check the URL and try again.");
+    return { success: false, reason: 'exception' };
   }
 };
 
